@@ -1,0 +1,449 @@
+<html>
+    <head>
+        <script src="http://code.jquery.com/jquery-3.5.1.js"></script>
+        <link type="text/css" rel="stylesheet" href="myStyle.css">
+    </head>
+
+    <body>
+        <h2 id="show">Best Score : </h2>
+        <canvas id="myCanvas" width="500" height="720"></canvas>
+        <div id="myModal" class="modal">
+            <div class="modal-content">
+                <div class="text-align:center">
+                    <label>Choose Thema</label>
+                    
+                    <span class="close" onclick="modalClose('myModal');">&times;</span>
+                </div>
+                <hr>
+                <div>
+                    <input type="image" src="image/bg5.png" width="100px" height="100px" alt="basicThema" onclick="bgSetting(true);">
+                    <input type="image" src="images/bg5.png" width="100px" height="100px" alt="hallowinThema" onclick="bgSetting(false);">
+                </div>
+            </div>
+        </div>
+
+        <div id="musicModal" class="modal">
+            <div class="modal-content">
+                <div class="text-align:center">
+                    <label>Music Setting</label>
+                    
+                    <span class="close" onclick="modalClose('musicModal');">&times;</span>
+                </div>
+                <hr>
+                <div>
+                    <div>
+                        <img src="basic/sound1.png" class="icon" alt="총알 발사 소리 조정">
+                        <input type="range" class="custom-range" min="0" max="1" step="0.1" value="0.5" onchange="shootControl( this );">
+                    </div>
+                    <div>
+                        <img src="basic/sound2.png" class="icon" alt="몬스터와 부딪혔을 때 소리 조정">
+                        <input type="range" class="custom-range" min="0" max="1" step="0.1" value="0.5" onchange="deiControl( this );">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal_end" id="endModal">
+            <div class="center">
+                <p class="message" id="message"></p>
+            </div>
+            <div class="options">
+              <button class="btn" onclick="playAgain(true);">Yes</button>
+            </div>
+        </div>
+
+        <script>
+            // scoreInit
+            var bestScore=0;
+            if( sessionStorage.getItem("bestScore") != null ){
+                bestScore = sessionStorage.getItem("bestScore");
+            }
+
+            $("#show").append( bestScore );
+
+            // basicInit
+            var folder = "image";
+            var stage = 1;
+            var basicTime = 5;
+            var timeout = basicTime;
+            var score = 0;
+            var eCount = 0;
+            var count = 0;
+            var num = 30 + ( ( stage -1 ) * 5 );
+            var start = false;
+            var init = true;
+            
+            var shootSound = new Audio("audio/shooting.mp3");
+            shootSound.volume = 0.5;
+            var deiSound = new Audio("audio/boom.mp3");
+            deiSound.volume = 0.5;
+            var bonusSound = new Audio("audio/bonus.mp3");
+            var mainBGM = new Audio("audio/mainBGM.mp3");
+
+            var back1Y = 0;
+            var back2Y = 720;
+            
+            // bonusInit
+            var bonusCount = 0; 
+            var bonusTime = generateRandom(50,150);
+            var startBonus = false;
+            var bonusX = generateRandom( 20,450 );
+            var bonusY = -10;
+            var bonusSpeed = generateRandom( 5,15 );
+
+            var canvas = document.getElementById("myCanvas");
+            var context = canvas.getContext("2d");
+
+            var mouseX, mouseY;
+            $("#myCanvas").on("mousemove", function(e){
+                if ( start ){
+                    mouseX = e.offsetX - 40;
+                    mouseY = e.offsetY;
+
+                    if ( mouseX > 450 ) mouseX = 450;   
+                    if ( mouseY > 670 ) mouseY = 670;
+                }
+            });
+            $("#myCanvas").click( function(event) {
+                if ( init ) {
+                    document.getElementById('myModal').style.display = "block";
+                    mainBGM.play();
+                    return;
+                }
+
+                if ( start ) start = false;
+                else start = true;
+
+                if ( event.offsetX > 10 && event.offsetX < 60 ){
+                    if ( event.offsetY > 80 && event.offsetY < 130 ){
+                        document.getElementById("musicModal").style.display = "block";
+                        start = false;
+                    }
+                }
+            });
+            
+            // imageInit
+            var bg = new Image();
+            bg.src = "basic/back.jpg";
+            var gun = new Image();
+            var gift = new Image();
+            var bullet = new Image();
+            var bulletList = [];
+            var enemy = new Image();
+            var enemyList = [];
+            var boom = new Image();
+            boom.src = "image/boom.png";
+            var setting = new Image();
+            setting.src = "basic/setting.png";
+            
+            function bgSetting( is_basic ){
+                if ( is_basic ) folder = "image";
+                else folder = "images";
+                
+                bg.src = folder + "/bg" + stage + ".png";
+                gun.src = folder + "/gun.png";
+                gift.src = folder + "/bonus.png";
+                bullet.src = folder + "/bullet.png";
+                enemy.src = folder + "/char" + stage + ".png";
+
+                modalClose("myModal");
+                init = false;
+                start = true;
+                mainBGM.pause();
+            }
+            
+            var intervalId = setInterval( function(){
+                repeat();
+            }, 30 );
+            var timeinterval = setInterval( function(){
+                timeCheck();
+            }, 1000);
+
+            function stageUp(){
+                if ( stage == 5 ){
+                    gameComplete();
+                    return;
+                }
+                clearInterval( intervalId );
+                clearInterval( timeinterval );
+                
+                stage++;
+                enemy.src = folder + "/char" + stage + ".png";
+                bg.src = folder + "/bg" + stage + ".png";
+
+                bulletList = [];
+                enemyList = [];
+                eCount = 30;
+                num = 30 + ( ( stage -1 ) * 10 );
+                timeout = stage*basicTime;
+
+                context.font = "bold 40px sans-serif";
+                context.fillStyle = "red";
+                context.fillText( "STAGE " + stage, 180, 330 );
+                
+                context.font = "bold 20px sans-serif";
+                context.fillStyle="white";
+
+                setTimeout(function(){    
+                    intervalId = setInterval( function(){
+                        repeat();
+                    }, 30);
+                    timeinterval = setInterval( function(){
+                        timeCheck();
+                    }, 1000);
+                }, 1500);
+            }
+            function repeat(){
+                count++;
+                eCount++;
+                if ( init ){
+                    context.drawImage( bg,0,0,500,720 );
+
+                    context.font = "bold 50px sans-serif";
+                    context.fillStyle = "white";
+                    context.fillText("Shoot the Monster", 25, 170);
+
+                    context.font = "bold 30px sans-serif";
+                    context.fillText("click anywhere!", 150, 680);
+                    return;
+                }
+                context.font = "bold 20px sans-serif";
+                context.drawImage( bg, 0, back1Y, 500, 720);
+                context.drawImage( bg, 0, back2Y, 500, 720);
+                context.fillStyle="white";
+                context.fillRect(8, 10, 130, 28);
+                context.strokeText("Stage " + stage, 10, 30);
+
+                context.fillStyle="white";
+                context.fillRect(8, 40, 130, 28);
+                context.strokeText("Score : " + score, 10, 60);
+
+                context.fillStyle="white";
+                context.fillRect(365, 10, 100, 28);
+                context.strokeText("Time : " + timeout, 370, 30);
+                context.drawImage( setting, 10, 80, 50, 50);
+
+                context.drawImage( gun, mouseX, mouseY, 80, 80 ); 
+                for(var i = 0; i < bulletList.length; i++){
+                    var tmp = bulletList[i];
+                
+                    context.drawImage( bullet, tmp.x+15, tmp.y-40, 15, 30);
+                }
+
+                for(var i = 0; i < enemyList.length; i++){
+                    var tmp = enemyList[i];
+                
+                    var alpha = 1*(tmp.life/stage);
+                    context.globalAlpha = alpha;
+                    context.drawImage( enemy, tmp.x, tmp.y, 60, 60);
+                }
+                context.globalAlpha = 1;
+
+                bonusCount++;
+                if ( start ){
+                    backScroll();
+                    makeBullet();
+                    moveBullet();
+                    makeEnemy();
+                    moveEnemy();
+                    checkEnemy();
+                    bonus();
+                    if ( startBonus ){
+                        moveBonus();
+                        checkBonus();
+                    }
+                }
+            }
+            function timeCheck(){
+                if ( start ){
+                    timeout--;
+                    context.fillText( "Time :  " + timeout, 370, 30 );
+
+                    // if ( timeout == 5 ) stageUp(); // stageUp 테스트
+                    if ( stage == 5 && timeout == 0 ) timeEnd();
+                    if ( timeout == 0 ) stageUp();
+                }
+            }
+            function backScroll(){
+                back1Y += 5;
+                back2Y += 5;
+
+                if ( back1Y >= 720 ){
+                    back1Y = -720;
+                    back2Y = 0;
+                }
+
+                if ( back2Y >= 720 ){
+                    back2Y = -720;
+                    back1Y = 0;
+                }
+            }
+            function makeBullet(){
+                if ( count % 5 != 0 ) return;
+
+                var obj = {};
+                obj.x = mouseX;
+                obj.y = mouseY;
+                bulletList.push(obj);
+            }
+            function moveBullet(){
+                for ( var i = 0; i < bulletList.length; i++ ){
+                    var tmp = bulletList[i];
+                    tmp.y = tmp.y - 10;
+                }
+            }
+            function makeEnemy(){
+                if ( eCount % num != 0 ) return;
+
+                var xPos = [ 20, 100, 180, 260, 340, 420 ];
+
+                var enemyNum = 0;
+                for(var i = 0; i < xPos.length; i++ ){
+                    var rand = generateRandom( 0, 1 );
+                   if ( rand == 1 ){
+                        obj = {};
+                        obj.life = stage;
+                        obj.x = xPos[i];
+                        obj.y = -30;
+                        enemyList.push(obj);
+                        enemyNum++;
+                    }
+                }
+                if ( enemyNum==0 ){
+                    obj = {};
+                    obj.life = stage;
+                    obj.x = xPos[5];
+                    obj.y = -30;
+                    enemyList.push(obj);
+                }
+            }
+            function moveEnemy(){
+                for ( var i = 0; i < enemyList.length; i++ ){
+                    var tmp = enemyList[i];
+                    tmp.y = tmp.y + 10;
+                }
+            }
+            function checkEnemy(){
+                for ( var i = 0; i < bulletList.length; i++){
+                    var miss = bulletList[i];
+                    for ( var j = 0; j < enemyList.length; j++ ){
+                        var enemy = enemyList[j];
+                        var isShooted = miss.x > enemy.x - 50 &&
+                                        miss.x < enemy.x + 50 &&
+                                        miss.y > enemy.y - 50 &&
+                                        miss.y < enemy.y + 50;
+                        if ( isShooted ){
+                            shootSound.currentTime = 0;
+                            shootSound.play();
+
+                            bulletList.splice(i, 1);
+                            enemy.life = enemy.life - 1;
+
+                            if ( enemy.life == 0 ){
+                                score += stage;
+                                enemyList.splice(j,1);
+                            }
+                        }
+                    }
+                }
+
+                for ( var k = 0; k < enemyList.length; k++ ){
+                    var enemy = enemyList[k];
+                    var isGun =  mouseX > enemy.x - 50 &&
+                                 mouseX < enemy.x + 50 &&
+                                 mouseY > enemy.y - 50 &&
+                                 mouseY < enemy.y + 50;
+
+                    if ( isGun ){
+                        deiSound.play();
+                        score -= stage;
+                        context.drawImage( boom, mouseX+10, mouseY, 60, 60);
+                        enemyList.splice(k,1);
+                    }
+                }
+            }
+            function bonus(){
+                if ( bonusCount >= bonusTime ){
+                    startBonus = true;
+                }
+            }
+            function moveBonus(){
+                bonusY = bonusY + bonusSpeed;
+                context.drawImage(gift, bonusX, bonusY + bonusSpeed, 60, 60);
+            }
+            function checkBonus(){
+                var isGun =  mouseX > bonusX - 50 &&
+                             mouseX < bonusX + 50 &&
+                             mouseY > bonusY - 50 &&
+                             mouseY < bonusY + 50;
+
+                if ( isGun ){
+                    bonusSound.currentTime = 0;
+                    bonusSound.play();
+
+                    score += 10;
+                    bonusCount = 0;
+                    bonusTime = generateRandom(50,150);
+                    startBonus = false;
+                    bonusY = -10;
+                    bonusSpeed = generateRandom(5,15);
+                    bonusX = generateRandom(20,450);
+                }
+            }
+            function generateRandom( min, max ){
+                var ranNum = Math.floor(Math.random()*(max-min+1)) + min;
+                return ranNum;
+            }
+            function gameComplete(){
+                document.getElementById("endModal").style.display = "block";
+            }
+            function timeEnd(){
+                clearInterval( intervalId );
+                clearInterval( timeinterval );
+                
+                calculate();
+            }
+            function calculate() {
+                if ( score > bestScore ){
+                    document.getElementById("show").innerHTML = "Best Score : " + score;
+                    sessionStorage.setItem("bestScore", score);
+                    document.getElementById("message").innerHTML = "<p style='color:red;'>Congratulation! Best Score!</p>";
+                }
+                $("#message").append("Your Score is " + score + "<br> Play Again?");
+            }
+            function modalClose( id ){
+                document.getElementById(id).style.display = "none";
+
+                if ( id == 'musicModal' ) start = true;
+            }
+            function shootControl( obj ){
+                var vol = obj.value;
+                shootSound.volume = vol;
+            }
+            function deiControl( obj ){
+                var vol = obj.value;
+                deiSound.volume = vol;
+            }
+            function playAgain( again ){
+                if ( again ) location.reload(true);
+                else { modalClose( "endModal" ); }
+            }
+
+            var flag = 0;
+            setInterval(bling, 1000);
+
+            function bling(){
+                if(flag == 0){
+                    document.querySelector('h2').style.color = '#d6806e';
+                    flag ++;
+                }else if(flag ==1){
+                    document.querySelector('h2').style.color = '#337cff';
+                    flag ++;
+                }else{
+                    document.querySelector('h2').style.color = '#fbb666';
+                    flag = 0;
+                }
+            }
+        </script>
+    </body>
+</html>
